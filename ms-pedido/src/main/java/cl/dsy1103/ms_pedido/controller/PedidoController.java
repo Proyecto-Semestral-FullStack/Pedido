@@ -36,6 +36,13 @@ public class PedidoController {
         return ResponseEntity.status(201).body(response);
     }
 
+    @GetMapping("/verificar")
+    public ResponseEntity<Boolean> verificarCompra(
+            @RequestParam Long usuarioId,
+            @RequestParam Long productoId) {
+        return ResponseEntity.ok(pedidoService.existeCompra(usuarioId, productoId));
+    }
+
     @PutMapping("/{id}/estado")
     public ResponseEntity<PedidoResponse> cambiarEstado(@PathVariable Long id, @Valid @RequestBody CambiarEstadoPedidoRequest request) {
         return ResponseEntity.ok(pedidoService.cambiarEstado(id, request));
