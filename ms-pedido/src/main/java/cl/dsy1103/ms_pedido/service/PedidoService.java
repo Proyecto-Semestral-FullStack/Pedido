@@ -11,4 +11,5 @@ public interface PedidoService {
     PedidoResponse cambiarEstado(Long id, CambiarEstadoPedidoRequest request);
     void eliminarPedido(Long id);
     String health();
+    boolean existeCompra(Long usuarioId, Long productoId);
 }

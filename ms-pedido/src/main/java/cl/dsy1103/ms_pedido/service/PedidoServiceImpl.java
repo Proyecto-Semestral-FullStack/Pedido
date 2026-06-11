@@ -68,8 +68,12 @@ public class PedidoServiceImpl implements PedidoService {
      * 5. Si se aprueba → descontar stock y confirmar pedido
      * 6. Si se rechaza → cancelar pedido
      */
+
+
     @Override
     public PedidoResponse crearPedido(CrearPedidoRequest request) {
+        Long direccionId = request.getDireccionId() != null ? request.getDireccionId() : 0L;
+
         // 1) Validar usuario
         if (!usuarioClient.existeUsuario(request.getUsuarioId())) {
             throw new NotFoundException("Usuario no encontrado: " + request.getUsuarioId());
@@ -91,9 +95,10 @@ public class PedidoServiceImpl implements PedidoService {
         }
 
         // 3) Construir pedido (estado PENDIENTE)
+        //
         Pedido pedido = Pedido.builder()
                 .usuarioId(request.getUsuarioId())
-                .direccionId(request.getDireccionId())
+                .direccionId(direccionId) //tiene un valor por defecto ya que deberia implementarse con otro ms-
                 .estadoPedido(EstadoPedido.PENDIENTE)
                 .descuento(request.getDescuento() != null ? request.getDescuento() : BigDecimal.ZERO)
                 .notas(request.getNotas())
@@ -212,5 +217,16 @@ public class PedidoServiceImpl implements PedidoService {
                 .actualizadoEn(p.getActualizadoEn())
                 .detalles(detalles)
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existeCompra(Long usuarioId, Long productoId) {
+        return pedidoRepository.findByUsuarioId(usuarioId)
+                .stream()
+                .filter(p -> p.getEstadoPedido() == EstadoPedido.CONFIRMADO
+                        || p.getEstadoPedido() == EstadoPedido.ENTREGADO)
+                .flatMap(p -> p.getDetalles().stream())
+                .anyMatch(d -> d.getProductoId().equals(productoId));
     }
     }
