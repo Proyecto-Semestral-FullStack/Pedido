@@ -23,7 +23,8 @@ public class Pedido {
     @Column(nullable = false)
     private Long usuarioId;
 
-    @Column(nullable = false)
+    //@Column(nullable = false)  futura implementacion con ms-envios no implementado aun.
+    //Se puede dejar un valor por defecto para pruebas.
     private Long direccionId;
 
     @Enumerated(EnumType.STRING)
@@ -51,5 +52,6 @@ public class Pedido {
     // Relación interna entre Pedido y DetallePedido (OneToMany).
     // Permitimos cascade PERSIST para guardar detalles cuando guardamos el pedido.
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
     private List<DetallePedido> detalles = new ArrayList<>();
 }
