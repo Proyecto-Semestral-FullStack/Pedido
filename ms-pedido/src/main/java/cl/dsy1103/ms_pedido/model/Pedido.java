@@ -23,9 +23,6 @@ public class Pedido {
     @Column(nullable = false)
     private Long usuarioId;
 
-    @Column(nullable = false)
-    private Long direccionId;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EstadoPedido estadoPedido;
@@ -41,12 +38,6 @@ public class Pedido {
 
     @Column(length = 1000)
     private String notas;
-
-    @Column(nullable = false)
-    private OffsetDateTime creadoEn;
-
-    @Column(nullable = false)
-    private OffsetDateTime actualizadoEn;
 
     // Relación interna entre Pedido y DetallePedido (OneToMany).
     // Permitimos cascade PERSIST para guardar detalles cuando guardamos el pedido.

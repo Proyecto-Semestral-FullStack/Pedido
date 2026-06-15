@@ -47,6 +47,12 @@ public class PedidoController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/existe-compra")
+    public ResponseEntity<Boolean> existeCompra(@RequestParam Long usuarioId,
+                                                @RequestParam Long productoId) {
+        return ResponseEntity.ok(pedidoService.existeCompra(usuarioId, productoId));
+    }
+
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok(pedidoService.health());

@@ -4,21 +4,17 @@ import cl.dsy1103.ms_pedido.dto.*;
 import cl.dsy1103.ms_pedido.exception.*;
 import cl.dsy1103.ms_pedido.model.*;
 import cl.dsy1103.ms_pedido.repository.*;
-
-
-import cl.dsy1103.ms_pedido.dto.*;
-import cl.dsy1103.ms_pedido.exception.*;
-import cl.dsy1103.ms_pedido.model.*;
-import cl.dsy1103.ms_pedido.repository.*;
-import cl.dsy1103.ms_pedido.config.*;
-
+import cl.dsy1103.ms_pedido.config.UsuarioClient;
+import cl.dsy1103.ms_pedido.config.CatalogoClient;
+import cl.dsy1103.ms_pedido.config.InventarioClient;
+import cl.dsy1103.ms_pedido.config.PagoClient;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.reactive.function.client.WebClient;
+
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -71,7 +67,9 @@ public class PedidoServiceImpl implements PedidoService {
     @Override
     public PedidoResponse crearPedido(CrearPedidoRequest request) {
         // 1) Validar usuario
-        if (!usuarioClient.existeUsuario(request.getUsuarioId())) {
+        try {
+            usuarioClient.validarUsuario(request.getUsuarioId());
+        } catch (FeignException.NotFound e) {
             throw new NotFoundException("Usuario no encontrado: " + request.getUsuarioId());
         }
 
@@ -80,11 +78,14 @@ public class PedidoServiceImpl implements PedidoService {
         Map<Long, CatalogoClient.ProductoInfo> infoProductos = new HashMap<>();
 
         for (DetallePedidoRequest detReq : detallesReq) {
-            var info = catalogoClient.obtenerProducto(detReq.getProductoId());
+            CatalogoClient.ProductoInfo info = catalogoClient.obtenerProducto(detReq.getProductoId());
             if (info == null) {
                 throw new NotFoundException("Producto no encontrado: " + detReq.getProductoId());
             }
-            if (!inventarioClient.verificarStock(detReq.getProductoId(), detReq.getCantidad())) {
+
+            Map<String, Object> stockResp = inventarioClient.verificarStock(detReq.getProductoId(), detReq.getCantidad());
+            boolean disponible = (boolean) stockResp.getOrDefault("disponible", false);
+            if (!disponible) {
                 throw new BadRequestException("Stock insuficiente para producto: " + detReq.getProductoId());
             }
             infoProductos.put(detReq.getProductoId(), info);
@@ -93,17 +94,14 @@ public class PedidoServiceImpl implements PedidoService {
         // 3) Construir pedido (estado PENDIENTE)
         Pedido pedido = Pedido.builder()
                 .usuarioId(request.getUsuarioId())
-                .direccionId(request.getDireccionId())
                 .estadoPedido(EstadoPedido.PENDIENTE)
                 .descuento(request.getDescuento() != null ? request.getDescuento() : BigDecimal.ZERO)
                 .notas(request.getNotas())
-                .creadoEn(OffsetDateTime.now())
-                .actualizadoEn(OffsetDateTime.now())
                 .build();
 
         BigDecimal subtotal = BigDecimal.ZERO;
         for (DetallePedidoRequest detReq : detallesReq) {
-            var info = infoProductos.get(detReq.getProductoId());
+            CatalogoClient.ProductoInfo info = infoProductos.get(detReq.getProductoId());
             BigDecimal precio = info.getPrecio();
             BigDecimal detSubtotal = precio.multiply(BigDecimal.valueOf(detReq.getCantidad()));
             subtotal = subtotal.add(detSubtotal);
@@ -123,20 +121,30 @@ public class PedidoServiceImpl implements PedidoService {
         if (total.compareTo(BigDecimal.ZERO) < 0) total = BigDecimal.ZERO;
         pedido.setTotal(total);
 
-        // 4) Guardar pedido (transacción corta)
         pedido = savePedidoShortTx(pedido);
 
-        // 5) Simular pago
-        boolean pagoAprobado = pagoClient.procesarPago(pedido.getId(), pedido.getTotal());
+        // 4) Simular pago
+        Map<String, Object> pagoBody = Map.of(
+                "pedidoId", pedido.getId(),
+                "monto", pedido.getTotal(),
+                "metodoPago", "TARJETA_CREDITO"
+        );
+        Map<String, Object> pagoResp = pagoClient.procesarPago(pagoBody);
+        boolean pagoAprobado = "APROBADO".equalsIgnoreCase((String) pagoResp.getOrDefault("estado", ""));
 
         if (pagoAprobado) {
-            // 6) Descontar stock
+            // 5) Descontar stock
             for (DetallePedidoRequest detReq : detallesReq) {
-                inventarioClient.descontarStock(
-                        detReq.getProductoId(),
-                        detReq.getCantidad(),
-                        "Pedido #" + pedido.getId()
+                // Obtener stockId
+                Map<String, Object> stockInfo = inventarioClient.verificarStock(detReq.getProductoId(), 1);
+                Integer stockId = (Integer) stockInfo.get("id");  // asumiendo que el inventario devuelve el id del stock
+
+                Map<String, Object> descBody = Map.of(
+                        "stockId", stockId,
+                        "cantidad", detReq.getCantidad(),
+                        "observacion", "Pedido #" + pedido.getId()
                 );
+                inventarioClient.descontarStock(descBody);
             }
             updateEstadoPedido(pedido.getId(), EstadoPedido.CONFIRMADO);
         } else {
@@ -145,6 +153,7 @@ public class PedidoServiceImpl implements PedidoService {
 
         return obtenerPorId(pedido.getId());
     }
+
 
     @Transactional
     protected Pedido savePedidoShortTx(Pedido pedido) {
@@ -156,7 +165,6 @@ public class PedidoServiceImpl implements PedidoService {
         Pedido pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() -> new NotFoundException("Pedido no encontrado: " + pedidoId));
         pedido.setEstadoPedido(nuevoEstado);
-        pedido.setActualizadoEn(OffsetDateTime.now());
         return pedidoRepository.save(pedido);
     }
 
@@ -202,15 +210,29 @@ public class PedidoServiceImpl implements PedidoService {
         return PedidoResponse.builder()
                 .id(p.getId())
                 .usuarioId(p.getUsuarioId())
-                .direccionId(p.getDireccionId())
                 .estadoPedido(p.getEstadoPedido().name())
                 .subtotal(p.getSubtotal())
                 .descuento(p.getDescuento())
                 .total(p.getTotal())
                 .notas(p.getNotas())
-                .creadoEn(p.getCreadoEn())
-                .actualizadoEn(p.getActualizadoEn())
                 .detalles(detalles)
                 .build();
     }
+
+    @Override
+    public boolean existeCompra(Long usuarioId, Long productoId) {
+        // Buscar pedidos en estado CONFIRMADO (o también ENVIADO, ENTREGADO)
+        List<Pedido> pedidos = pedidoRepository.findByUsuarioId(usuarioId);
+        for (Pedido pedido : pedidos) {
+            if (pedido.getEstadoPedido() == EstadoPedido.CONFIRMADO
+                    || pedido.getEstadoPedido() == EstadoPedido.ENVIADO
+                    || pedido.getEstadoPedido() == EstadoPedido.ENTREGADO) {
+                boolean tieneProducto = pedido.getDetalles().stream()
+                        .anyMatch(d -> d.getProductoId().equals(productoId));
+                if (tieneProducto) return true;
+            }
+        }
+        return false;
+    }
+
     }
