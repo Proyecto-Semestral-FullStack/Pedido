@@ -1,5 +1,6 @@
 package cl.dsy1103.ms_pedido.dto;
 
+import cl.dsy1103.ms_pedido.model.EstadoPedido;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -14,7 +15,7 @@ public class PedidoResponse {
     private Long id;
     private Long usuarioId;
     private Long direccionId;
-    private String estadoPedido;
+    private EstadoPedido estadoPedido;
     private BigDecimal subtotal;
     private BigDecimal descuento;
     private BigDecimal total;
