@@ -172,7 +172,7 @@ public class PedidoServiceImpl implements PedidoService {
     public PedidoResponse cambiarEstado(Long id, CambiarEstadoPedidoRequest request) {
         EstadoPedido nuevo;
         try {
-            nuevo = EstadoPedido.valueOf(request.getEstadoPedido());
+            nuevo = EstadoPedido.valueOf(request.getEstadoPedido().name());
         } catch (IllegalArgumentException e) {
             throw new BadRequestException("Estado inválido: " + request.getEstadoPedido());
         }
@@ -210,7 +210,7 @@ public class PedidoServiceImpl implements PedidoService {
         return PedidoResponse.builder()
                 .id(p.getId())
                 .usuarioId(p.getUsuarioId())
-                .estadoPedido(p.getEstadoPedido().name())
+                .estadoPedido(p.getEstadoPedido())
                 .subtotal(p.getSubtotal())
                 .descuento(p.getDescuento())
                 .total(p.getTotal())
