@@ -12,6 +12,14 @@ spring:
       hibernate:
         format_sql: true
 
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html # usar localhost:8085/swagger-ui.html para probar la documentacion de la API
+
 server:
   port: 8085
 
